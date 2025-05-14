@@ -13,6 +13,7 @@ from PIL import Image
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # Limit uploads to 16 MB
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Updated model path
@@ -46,70 +47,79 @@ def allowed_file(filename):
 
 def convert_to_jpeg(file_storage):
     """Convert TIFF or other formats to JPEG and return as BytesIO."""
-    file_data = BytesIO(file_storage.read())
-    img = Image.open(file_data)
-    converted_img = BytesIO()
+    try:
+        file_data = BytesIO(file_storage.read())
+        img = Image.open(file_data)
+        converted_img = BytesIO()
 
-    # Convert image to RGB mode (required for JPEG) and save as JPEG
-    img = img.convert("RGB")
-    img.save(converted_img, format="JPEG")
-    converted_img.seek(0)
+        # Convert image to RGB mode (required for JPEG) and save as JPEG
+        img = img.convert("RGB")
+        img.save(converted_img, format="JPEG")
+        converted_img.seek(0)
 
-    return converted_img
+        return converted_img
+    except Exception as e:
+        raise ValueError(f"Error while processing image: {str(e)}")
 
 def predict_image(file_storage):
     """Predict the disease class for the given image."""
-    jpeg_data = convert_to_jpeg(file_storage)
-    img = image.load_img(jpeg_data, target_size=(224, 224))
-    img_array = image.img_to_array(img) / 255.0
-    img_array = np.expand_dims(img_array, axis=0)
-    prediction = model.predict(img_array)
-    return np.argmax(prediction[0])
+    try:
+        jpeg_data = convert_to_jpeg(file_storage)
+        img = image.load_img(jpeg_data, target_size=(224, 224))
+        img_array = image.img_to_array(img) / 255.0
+        img_array = np.expand_dims(img_array, axis=0)
+        prediction = model.predict(img_array)
+        return np.argmax(prediction[0])
+    except Exception as e:
+        raise ValueError(f"Error during prediction: {str(e)}")
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
     """Handle the upload and prediction logic."""
     if request.method == 'POST':
-        left_file = request.files.get('left_ear')
-        right_file = request.files.get('right_ear')
+        try:
+            left_file = request.files.get('left_ear')
+            right_file = request.files.get('right_ear')
 
-        if not left_file or not right_file:
-            return render_template('index.html', error="Please upload both ear images.")
+            if not left_file or not right_file:
+                return render_template('index.html', error="Please upload both ear images.")
 
-        if allowed_file(left_file.filename) and allowed_file(right_file.filename):
-            left_index = predict_image(left_file)
-            left_file.seek(0)
-            right_index = predict_image(right_file)
-            right_file.seek(0)
+            if allowed_file(left_file.filename) and allowed_file(right_file.filename):
+                left_index = predict_image(left_file)
+                left_file.seek(0)
+                right_index = predict_image(right_file)
+                right_file.seek(0)
 
-            left_disease = class_names[left_index]
-            right_disease = class_names[right_index]
+                left_disease = class_names[left_index]
+                right_disease = class_names[right_index]
 
-            left_info = random.choice(disease_info.get(left_disease, [{}]))
-            right_info = random.choice(disease_info.get(right_disease, [{}]))
+                left_info = random.choice(disease_info.get(left_disease, [{}]))
+                right_info = random.choice(disease_info.get(right_disease, [{}]))
 
-            left_jpeg = convert_to_jpeg(left_file)
-            right_jpeg = convert_to_jpeg(right_file)
-            left_image_data = base64.b64encode(left_jpeg.read()).decode('utf-8')
-            right_image_data = base64.b64encode(right_jpeg.read()).decode('utf-8')
+                left_jpeg = convert_to_jpeg(left_file)
+                right_jpeg = convert_to_jpeg(right_file)
+                left_image_data = base64.b64encode(left_jpeg.read()).decode('utf-8')
+                right_image_data = base64.b64encode(right_jpeg.read()).decode('utf-8')
 
-            results = {
-                "left": {
-                    "disease": left_disease,
-                    "image_data": left_image_data,
-                    "description": left_info.get('description', "Description not available."),
-                    "causes": left_info.get('causes', ["Causes not available."]),
-                    "cautions": left_info.get('cautions', ["Cautions not available."])
-                },
-                "right": {
-                    "disease": right_disease,
-                    "image_data": right_image_data,
-                    "description": right_info.get('description', "Description not available."),
-                    "causes": right_info.get('causes', ["Causes not available."]),
-                    "cautions": right_info.get('cautions', ["Cautions not available."])
+                results = {
+                    "left": {
+                        "disease": left_disease,
+                        "image_data": left_image_data,
+                        "description": left_info.get('description', "Description not available."),
+                        "causes": left_info.get('causes', ["Causes not available."]),
+                        "cautions": left_info.get('cautions', ["Cautions not available."])
+                    },
+                    "right": {
+                        "disease": right_disease,
+                        "image_data": right_image_data,
+                        "description": right_info.get('description', "Description not available."),
+                        "causes": right_info.get('causes', ["Causes not available."]),
+                        "cautions": right_info.get('cautions', ["Cautions not available."])
+                    }
                 }
-            }
-            return render_template('results.html', results=results)
+                return render_template('results.html', results=results)
+        except Exception as e:
+            return render_template('index.html', error=f"An error occurred: {str(e)}")
 
     return render_template('index.html')
 
