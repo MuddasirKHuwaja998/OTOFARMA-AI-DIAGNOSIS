@@ -16,6 +16,20 @@
     footer { margin-top: 30px; text-align: center; padding: 20px; background: #d4edda; border-top: 1px solid #28a745; }
     footer a { color: #28a745; text-decoration: none; }
     footer a:hover { text-decoration: underline; }
+    .btn-home {
+      margin-top: 20px;
+      display: block;
+      margin-left: auto;
+      margin-right: auto;
+      width: 200px;
+      background-color: #28a745;
+      color: white;
+      border: 1px solid #28a745;
+      border-radius: 5px;
+    }
+    .btn-home:hover {
+      background-color: #218838;
+    }
   </style>
 </head>
 <body>
@@ -49,6 +63,8 @@
       <p><strong>Cause:</strong> {{ results.right.causes | join(', ') }}</p>
       <p><strong>Precauzioni:</strong> {{ results.right.cautions | join(', ') }}</p>
     </div>
+
+    <a href="/" class="btn btn-success btn-home">Torna alla Pagina Iniziale</a>
   </main>
 
   <footer>
