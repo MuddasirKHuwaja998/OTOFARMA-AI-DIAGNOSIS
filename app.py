@@ -4,9 +4,9 @@ import json
 import base64
 import logging
 from flask import Flask, render_template, request
-from tensorflow.keras.models import load_model
-from tensorflow.keras.preprocessing import image
+import tensorflow as tf
 import numpy as np
+from tensorflow.keras.preprocessing import image
 from io import BytesIO
 from PIL import Image
 
@@ -23,18 +23,23 @@ app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # Limit uploads to 16 MB
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Updated model path
-MODEL_PATH = os.path.join(BASE_DIR, "model_stored", "model.h5")
+# Updated TFLite model path
+MODEL_PATH = os.path.join(BASE_DIR, "saved_model", "final_model.tflite")
 
 # Ensure the model file exists
 if not os.path.exists(MODEL_PATH):
     logging.error(f"Model file not found at {MODEL_PATH}. Ensure the file exists in the correct path.")
     raise FileNotFoundError(f"Model file not found at {MODEL_PATH}.")
 
-# Load the model
-logging.info("Loading model...")
-model = load_model(MODEL_PATH)
-logging.info("Model loaded successfully.")
+# Load the TFLite model
+logging.info("Loading TFLite model...")
+interpreter = tf.lite.Interpreter(model_path=MODEL_PATH)
+interpreter.allocate_tensors()
+logging.info("TFLite model loaded successfully.")
+
+# Get input and output details for the TFLite model
+input_details = interpreter.get_input_details()
+output_details = interpreter.get_output_details()
 
 # Define class names
 class_names = [
@@ -83,7 +88,15 @@ def predict_image(file_storage):
         img = image.load_img(jpeg_data, target_size=(224, 224))
         img_array = image.img_to_array(img) / 255.0
         img_array = np.expand_dims(img_array, axis=0)
-        prediction = model.predict(img_array)
+
+        # Set input tensor for the TFLite model
+        interpreter.set_tensor(input_details[0]['index'], img_array)
+
+        # Perform inference
+        interpreter.invoke()
+
+        # Get the prediction
+        prediction = interpreter.get_tensor(output_details[0]['index'])
         logging.info(f"Prediction successful: {prediction}")
         return np.argmax(prediction[0])
     except Exception as e:
