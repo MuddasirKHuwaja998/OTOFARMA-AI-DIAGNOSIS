@@ -2,6 +2,7 @@ import os
 import random
 import json
 import base64
+import logging
 from flask import Flask, render_template, request
 from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing import image
@@ -12,6 +13,12 @@ from PIL import Image
 # Suppress TensorFlow warnings
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
+# Disable GPU usage
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # Limit uploads to 16 MB
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -21,10 +28,13 @@ MODEL_PATH = os.path.join(BASE_DIR, "model_stored", "model.h5")
 
 # Ensure the model file exists
 if not os.path.exists(MODEL_PATH):
-    raise FileNotFoundError(f"Model file not found at {MODEL_PATH}. Ensure the file exists in the correct path.")
+    logging.error(f"Model file not found at {MODEL_PATH}. Ensure the file exists in the correct path.")
+    raise FileNotFoundError(f"Model file not found at {MODEL_PATH}.")
 
 # Load the model
+logging.info("Loading model...")
 model = load_model(MODEL_PATH)
+logging.info("Model loaded successfully.")
 
 # Define class names
 class_names = [
@@ -36,7 +46,8 @@ class_names = [
 # Load disease information
 json_path = os.path.join(BASE_DIR, "static", "disease_info.json")
 if not os.path.exists(json_path):
-    raise FileNotFoundError(f"Disease information file not found at {json_path}. Ensure the file exists.")
+    logging.error(f"Disease information file not found at {json_path}. Ensure the file exists.")
+    raise FileNotFoundError(f"Disease information file not found at {json_path}.")
 
 with open(json_path, encoding='utf-8') as f:
     disease_info = json.load(f)
@@ -47,6 +58,7 @@ def allowed_file(filename):
 
 def convert_to_jpeg(file_storage):
     """Convert TIFF or other formats to JPEG and return as BytesIO."""
+    logging.info("Converting image to JPEG format...")
     try:
         file_data = BytesIO(file_storage.read())
         img = Image.open(file_data)
@@ -57,20 +69,25 @@ def convert_to_jpeg(file_storage):
         img.save(converted_img, format="JPEG")
         converted_img.seek(0)
 
+        logging.info("Image conversion successful.")
         return converted_img
     except Exception as e:
+        logging.error(f"Error while processing image: {str(e)}")
         raise ValueError(f"Error while processing image: {str(e)}")
 
 def predict_image(file_storage):
     """Predict the disease class for the given image."""
+    logging.info("Starting image prediction...")
     try:
         jpeg_data = convert_to_jpeg(file_storage)
         img = image.load_img(jpeg_data, target_size=(224, 224))
         img_array = image.img_to_array(img) / 255.0
         img_array = np.expand_dims(img_array, axis=0)
         prediction = model.predict(img_array)
+        logging.info(f"Prediction successful: {prediction}")
         return np.argmax(prediction[0])
     except Exception as e:
+        logging.error(f"Error during prediction: {str(e)}")
         raise ValueError(f"Error during prediction: {str(e)}")
 
 @app.route('/', methods=['GET', 'POST'])
@@ -119,6 +136,7 @@ def index():
                 }
                 return render_template('results.html', results=results)
         except Exception as e:
+            logging.error(f"An error occurred: {str(e)}")
             return render_template('index.html', error=f"An error occurred: {str(e)}")
 
     return render_template('index.html')
